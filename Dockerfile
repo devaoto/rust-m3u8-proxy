@@ -17,9 +17,7 @@ FROM debian:buster-slim
 RUN apt-get update && apt-get install -y \
     libssl-dev \
     ca-certificates \
-    && rm -rf /var/lib/apt/lists/* \
-    && ln -s /usr/lib/x86_64-linux-gnu/libssl.so.3 /usr/lib/x86_64-linux-gnu/libssl.so \
-    && ldconfig
+    && rm -rf /var/lib/apt/lists/*
 
 # Copy the compiled binary from the builder stage
 COPY --from=builder /usr/src/app/target/release/rust-m3u8-proxy /usr/local/bin/rust-m3u8-proxy
