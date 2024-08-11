@@ -5,10 +5,11 @@ edition = "2021"
 
 [dependencies]
 warp = "0.3"
-reqwest = { version = "0.12.5", features = ["json"] }
+reqwest = { version = "0.12.5", features = ["json", "blocking"] }
 tokio = { version = "1", features = ["full"] }
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["fmt"] }
 colored = "2.0"
 urlencoding = "2.1"
 dotenv = "0.15.0"
+anyhow = "1.0"

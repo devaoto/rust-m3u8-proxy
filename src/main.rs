@@ -1,18 +1,11 @@
 use warp::Filter;
-use std::convert::Infallible;
 use warp::http::{ Response, StatusCode };
 use reqwest::Client;
 use reqwest::Url;
-use warp::reply::with_status;
-use warp::reply::WithStatus;
 use tracing::{ info, error };
 use tracing_subscriber::FmtSubscriber;
 use colored::*;
 use dotenv::dotenv;
-
-fn convert_response(body: String) -> WithStatus<String> {
-    with_status(body, StatusCode::OK)
-}
 
 #[tokio::main]
 async fn main() {
@@ -33,7 +26,7 @@ async fn main() {
 
 async fn handle_request(
     query: std::collections::HashMap<String, String>
-) -> Result<impl warp::Reply, Infallible> {
+) -> anyhow::Result<impl warp::Reply, warp::Rejection> {
     let target_url = query.get("url").cloned();
     let referer_url = query.get("referer").cloned().unwrap_or_default();
     let origin_url = query.get("origin").cloned().unwrap_or_default();
@@ -48,7 +41,14 @@ async fn handle_request(
 
     if target_url.is_none() {
         error!("Invalid URL");
-        return Ok(warp::reply::with_status("Invalid URL".to_string(), StatusCode::BAD_REQUEST));
+        use warp::reject::Reject;
+
+        #[derive(Debug)]
+        struct InvalidUrl;
+
+        impl Reject for InvalidUrl {}
+
+        return Err(warp::reject::custom(InvalidUrl));
     }
 
     let target_url = target_url.unwrap();
@@ -62,11 +62,19 @@ async fn handle_request(
 
     if let Err(e) = response_result {
         error!("Request error: {}", e.to_string().red());
-        return Ok(warp::reply::with_status(e.to_string(), StatusCode::INTERNAL_SERVER_ERROR));
+        error!("Server Error");
+        use warp::reject::Reject;
+
+        #[derive(Debug)]
+        struct ServerError;
+
+        impl Reject for ServerError {}
+
+        return Err(warp::reject::custom(ServerError));
     }
 
     let response = response_result.unwrap();
-    let status = response.status();
+    let status = StatusCode::from_u16(response.status().as_u16()).unwrap();
     let content_type = response
         .headers()
         .get("Content-Type")
@@ -116,11 +124,13 @@ async fn handle_request(
     }
 
     let response_body = Response::builder()
-        .status(warp::http::StatusCode::from_u16(status.as_u16()).unwrap())
+        .status(status)
         .header("Access-Control-Allow-Origin", "*")
-        .header("Content-Type", content_type)
+        .header("Access-Control-Allow-Headers", "*")
+        .header("Access-Control-Allow-Methods", "*")
+        .header("Content-Type", content_type.clone())
         .body(body)
         .unwrap();
 
-    Ok(convert_response(response_body.into_body()))
+    Ok(response_body)
 }
