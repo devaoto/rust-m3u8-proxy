@@ -8,6 +8,7 @@ use warp::reply::WithStatus;
 use tracing::{ info, error };
 use tracing_subscriber::FmtSubscriber;
 use colored::*;
+use dotenv::dotenv;
 
 fn convert_response(body: String) -> WithStatus<String> {
     with_status(body, StatusCode::OK)
@@ -15,12 +16,19 @@ fn convert_response(body: String) -> WithStatus<String> {
 
 #[tokio::main]
 async fn main() {
+    dotenv().ok();
+
     let subscriber = FmtSubscriber::builder().with_max_level(tracing::Level::INFO).finish();
     tracing::subscriber::set_global_default(subscriber).expect("setting default subscriber failed");
 
     let cors_proxy = warp::path("proxy").and(warp::query::query()).and_then(handle_request);
 
-    warp::serve(cors_proxy).run(([127, 0, 0, 1], 3030)).await;
+    let port = std::env::var("PORT").unwrap_or("3030".to_string()).parse();
+
+    use std::net::{ IpAddr, Ipv4Addr, SocketAddr };
+
+    let addr = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), port.unwrap());
+    warp::serve(cors_proxy).run(addr).await;
 }
 
 async fn handle_request(
