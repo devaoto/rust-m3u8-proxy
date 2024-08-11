@@ -13,6 +13,12 @@ RUN cargo build --release
 # Use a minimal base image for the final image
 FROM debian:buster-slim
 
+# Install necessary dependencies
+RUN apt-get update && apt-get install -y \
+    libssl-dev \
+    ca-certificates \
+    && rm -rf /var/lib/apt/lists/*
+
 # Copy the compiled binary from the builder stage
 COPY --from=builder /usr/src/app/target/release/rust-m3u8-proxy /usr/local/bin/rust-m3u8-proxy
 
