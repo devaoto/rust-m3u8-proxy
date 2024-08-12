@@ -16,11 +16,11 @@ async fn main() {
 
     let cors_proxy = warp::path("proxy").and(warp::query::query()).and_then(handle_request);
 
-    let port = std::env::var("PORT").unwrap_or("3030".to_string()).parse();
+    let port = std::env::var("PORT").unwrap_or("3030".to_string()).parse().unwrap();
 
     use std::net::{ IpAddr, Ipv4Addr, SocketAddr };
 
-    let addr = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(0, 0, 0, 0)), port.unwrap());
+    let addr = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(0, 0, 0, 0)), port);
     warp::serve(cors_proxy).run(addr).await;
 }
 
@@ -30,7 +30,6 @@ async fn handle_request(
     let target_url = query.get("url").cloned();
     let referer_url = query.get("referer").cloned().unwrap_or_default();
     let origin_url = query.get("origin").cloned().unwrap_or_default();
-    let proxy_all = query.get("all").cloned().unwrap_or_default();
 
     info!(
         "Incoming request: url={} referer={} origin={}",
@@ -41,13 +40,6 @@ async fn handle_request(
 
     if target_url.is_none() {
         error!("Invalid URL");
-        use warp::reject::Reject;
-
-        #[derive(Debug)]
-        struct InvalidUrl;
-
-        impl Reject for InvalidUrl {}
-
         return Err(warp::reject::custom(InvalidUrl));
     }
 
@@ -62,14 +54,6 @@ async fn handle_request(
 
     if let Err(e) = response_result {
         error!("Request error: {}", e.to_string().red());
-        error!("Server Error");
-        use warp::reject::Reject;
-
-        #[derive(Debug)]
-        struct ServerError;
-
-        impl Reject for ServerError {}
-
         return Err(warp::reject::custom(ServerError));
     }
 
@@ -84,40 +68,34 @@ async fn handle_request(
     let mut body = response.text().await.unwrap_or_default();
 
     if target_url.contains(".m3u8") {
-        let target_url_trimmed = Url::parse(&target_url)
-            .ok()
-            .and_then(|u| {
-                let mut parts = u.path().split('/').collect::<Vec<_>>();
-                parts.pop(); // Remove the last part (.m3u8)
-                Some(parts.join("/"))
-            })
-            .unwrap_or_default();
-        let encoded_url = urlencoding::encode(&referer_url);
-        let encoded_origin = urlencoding::encode(&origin_url);
-
         body = body
             .split('\n')
             .map(|line| {
-                if line.starts_with("#") || line.trim().is_empty() {
-                    return line.to_string();
-                } else if proxy_all == "yes" && line.starts_with("http") {
-                    return format!("{}?url={}", query.get("url").unwrap(), line);
-                }
-                format!(
-                    "?url={}{}{}{}",
-                    urlencoding::encode(&target_url_trimmed),
-                    line,
-                    if !origin_url.is_empty() {
-                        format!("&origin={}", encoded_origin)
+                if line.starts_with("#") {
+                    if line.starts_with("#EXT-X-KEY:") {
+                        let regex = regex::Regex::new(r#"https?://[^\s"']+"#).unwrap();
+                        regex
+                            .replace_all(line, |caps: &regex::Captures| {
+                                format!(
+                                    "?url={}&referer={}",
+                                    urlencoding::encode(&caps[0]),
+                                    urlencoding::encode(&referer_url)
+                                )
+                            })
+                            .to_string()
                     } else {
-                        String::new()
-                    },
-                    if !referer_url.is_empty() {
-                        format!("&referer={}", encoded_url)
-                    } else {
-                        String::new()
+                        line.to_string()
                     }
-                )
+                } else {
+                    let uri = Url::parse(line).unwrap_or_else(|_| {
+                        Url::parse(&format!("{}/{}", target_url, line)).unwrap()
+                    });
+                    format!(
+                        "?url={}&referer={}",
+                        urlencoding::encode(uri.as_str()),
+                        urlencoding::encode(&referer_url)
+                    )
+                }
             })
             .collect::<Vec<_>>()
             .join("\n");
@@ -134,3 +112,13 @@ async fn handle_request(
 
     Ok(response_body)
 }
+
+#[derive(Debug)]
+struct InvalidUrl;
+
+impl warp::reject::Reject for InvalidUrl {}
+
+#[derive(Debug)]
+struct ServerError;
+
+impl warp::reject::Reject for ServerError {}
