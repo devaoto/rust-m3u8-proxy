@@ -123,5 +123,5 @@ Your application should now be accessible at `http://localhost:3030`.
 
 ## Important Notice
 
-This project was based on Chance's Cloudflare Worker M3U8 Proxy
+This project was inspired by Chance's Cloudflare Worker M3U8 Proxy
 URL: https://github.com/Gratenes/m3u8CloudflareWorkerProxy
