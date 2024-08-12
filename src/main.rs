@@ -68,6 +68,28 @@ async fn handle_request(
     let mut body = response.text().await.unwrap_or_default();
 
     if target_url.contains(".m3u8") {
+        let target_url_trimmed = if target_url.contains(".m3u8") {
+            Url::parse(&target_url)
+                .ok()
+                .and_then(|u| {
+                    let mut parts = u.path().split('/').collect::<Vec<_>>();
+                    print!("{:?}", parts);
+                    parts.pop(); // Remove the last part
+                    print!("{:?}", parts);
+                    Some(
+                        format!(
+                            "{}://{}{}",
+                            u.scheme(),
+                            u.host_str().unwrap_or_default(),
+                            parts.join("/")
+                        )
+                    )
+                })
+                .unwrap_or(target_url.clone())
+        } else {
+            target_url.clone()
+        };
+
         body = body
             .split('\n')
             .map(|line| {
@@ -88,7 +110,7 @@ async fn handle_request(
                     }
                 } else {
                     let uri = Url::parse(line).unwrap_or_else(|_| {
-                        Url::parse(&format!("{}/{}", target_url, line)).unwrap()
+                        Url::parse(&format!("{}/{}", target_url_trimmed, line)).unwrap()
                     });
                     format!(
                         "?url={}&referer={}",
